@@ -433,6 +433,8 @@ def GetName(sFileName=''):
     return rVal
 
 if __name__=='__main__':
+
+    """
     import sys
     name=''
     
@@ -443,7 +445,7 @@ if __name__=='__main__':
             exit('Errore nessun nome torvato')
     else:
         exit('Errore nessun nome trovato')
-    
+    """
     oItasa=Itasa()
     data=oItasa.login('Username','Password')
     oItasa.loginSite()
