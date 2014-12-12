@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Copyright (c) <2014> <Solkeera/mScotty>
 
@@ -24,7 +26,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-import pycurl, json
+import os,pycurl, json, zipfile, sys
 from BeautifulSoup import BeautifulSoup as beatsop
 from StringIO import StringIO
 
@@ -33,14 +35,14 @@ class Itasa:
     ITASA={}
     ITASA["HTTPS"]=True
     ITASA["URL"]="//api.italiansubs.net/api/rest/"
-    ## apikey developer
     ITASA["APIKEY"]=""
-    ##
     ITASA["JSON"]=True
-    ITASA["AGENT"]="PyItasa (curl; Linux-x11; x86_64)"
+    ITASA["AGENT"]="curl (Python-Curl; Linux-x11)"
     ITASA["AUTHCODE"]=""
     ITASA["COOKIES"]=[]
-    ITASA["KEY"]="Itasa_Rest2_Server_Users"
+    ITASA["KEYS"]={'USER':"Itasa_Rest2_Server_Users",
+                   'NEWS':"Itasa_Rest2_Server_News",
+                   'SUBS':"Itasa_Rest2_Server_Subtitles"}
     ITASA["USER"]=""
     ITASA["PASS"]=""
     ITASA['LOGIN']=0
@@ -87,7 +89,7 @@ class Itasa:
         self.ITASA['LAST_ACTION']=''
 
     def setSubInfo(self,dInfo):
-        sSubKey='Itasa_Rest2_Server_Subtitles'
+        sSubKey=self.ITASA['KEYS']['SUBS']
         dInfo=dInfo[sSubKey]['single']['subtitle']
         self.SUBTITLE['NAME']=dInfo['name']
         self.SUBTITLE['FILENAME']=dInfo['filename']
@@ -103,6 +105,8 @@ class Itasa:
         return self.ITASA['LOGIN']
     def getLastAction(self):
         return self.ITASA['LAST_ACTION']
+    def getUserAgent(self):
+        return self.ITASA['AGENT']
     
     def isLogged(self):
         bLogin=self.getLogin()
@@ -118,12 +122,12 @@ class Itasa:
         name=name.strip()
         value=value.strip()
         name=name.lower()        
-        self.HEADERS[self.convertMe(name)]=self.convertMe(value)
+        self.HEADERS[self.__convertMe(name)]=self.__convertMe(value)
 
     ## curl write
-    def write(self,sData,headers=''):
+    def __write(self,sData,headers=''):
         self.FP=pycurl.Curl()
-        self.FP.setopt(self.FP.USERAGENT,self.ITASA['AGENT'])
+        self.FP.setopt(self.FP.USERAGENT,self.getUserAgent())
         
         if sData=='':
             return False
@@ -136,15 +140,17 @@ class Itasa:
             
         sData=self.ITASA["URL"]+sData
 
+        #self.ITASA['URL']
+        
         self.FP.setopt(self.FP.URL,sData)
         if len(self.ITASA['COOKIES'])>0:
             self.FP.setopt(pycurl.COOKIELIST, 'ALL')
             self.FP.setopt(self.FP.COOKIE,'; '.join(x for x in self.ITASA['COOKIES']))
         
-        return self.read()
+        return self.__read()
 
     ## curl read
-    def read(self):
+    def __read(self):
         oData = StringIO()
         
         self.FP.setopt(self.FP.HEADERFUNCTION, self.__headerFunction)
@@ -156,11 +162,11 @@ class Itasa:
 
         if self.ITASA['LAST_ACTION']=='DOWNLOAD': self.ITASA['LAST_ACTION']=''
             
-        self.close()        
+        self.__close()        
         return rVal
 
     ## chiude handler curl
-    def close(self):
+    def __close(self):
         self.FP.close()
 
     
@@ -174,7 +180,6 @@ class Itasa:
         import urllib2
         import urllib
 
-        #data={}
         headers={}
         headers['User-Agent']=self.ITASA['AGENT']
         headers['Cookie']='; '.join(x for x in self.ITASA['COOKIES'])
@@ -185,7 +190,7 @@ class Itasa:
         html_data=urllib2.urlopen(req)
 
         ## dict form con i dati
-        dForm=self.html_parser(html_data.read().decode("utf-8"))
+        dForm=self.__htmlParser(html_data.read().decode("utf-8"))
 
         ## utilizzo dopo il cookie
         self.ITASA['COOKIES'].append(html_data.info()['Set-Cookie'].split(';')[0])
@@ -219,7 +224,7 @@ class Itasa:
                 sWrite="news"
             else:
                 sWrite="news/{nId}".format(nId=nId)
-        bRet=self.write(sWrite)
+        bRet=self.__write(sWrite)
         return bRet
 
     def getShow(self,sAction='',dParams={}):
@@ -264,7 +269,7 @@ class Itasa:
         elif sAction=='search':
             sWrite+='/search?q={sQuery}&page={nPage}'.format(sQuery=dParams['QUERY'],nPage=dParams['PAGE'])
             
-        bRet=self.write(sWrite)
+        bRet=self.__write(sWrite)
         
         return bRet
 
@@ -331,7 +336,7 @@ class Itasa:
                 
         if sAction=='download':
             sWrite+=self.__download(nShowId)
-        bRet=self.write(sWrite)
+        bRet=self.__write(sWrite)
         
         return bRet
 
@@ -346,20 +351,21 @@ class Itasa:
         ritorna: boolean
         """
         if len(sUser)==0:
-            sUser=self.getUsername()
+            sUser=self.getUsername().strip()
         if len(sPass)==0:
-            sPass=self.getPassword()
+            sPass=self.getPassword().strip()
 
         self.setUsername(sUser)
         self.setPassword(sPass)
         sWrite='users/login?username={username}&password={password}'.format(username=sUser,password=sPass)
+        
         # falso o oggeto StringIO
-        rVal=self.write(sWrite)
+        rVal=self.__write(sWrite)
         self.ITASA["COOKIES"].append(self.HEADERS['set-cookie'].strip().split(';')[0])
         if rVal:
             dBuffer=json.loads(rVal.getvalue())
-            if dBuffer.has_key(self.ITASA['KEY']):
-                self.setAuthCode(dBuffer[self.ITASA["KEY"]]['login']['user']['authcode'])
+            if dBuffer.has_key(self.ITASA['KEYS']['USER']):
+                self.setAuthCode(dBuffer[self.ITASA["KEYS"]['USER']]['login']['user']['authcode'])
                 self.setLogin(True)
             else:
                 self.setLogin(False)
@@ -369,13 +375,11 @@ class Itasa:
     ## la funzione esegue il login se non effettuato
     def __download(self,nIdSub):
         if not self.isLogged():
-            bLogged=self.login()
-        
-        # /download?authcode=xxxxxxxxxxxxxxxxx&subtitle_id=xxx
+            bLogged=self.login()        
 
         dInfo=self.getSubtitles('info',{'ID':nIdSub})
         dInfo=json.loads(dInfo.getvalue())
-        dInfo=self.convertMe(dInfo)
+        dInfo=self.__convertMe(dInfo)
         self.setSubInfo(dInfo)
 
         if self.isLogged():
@@ -385,11 +389,11 @@ class Itasa:
                 return sWrite            
         return False
 
-    def convertMe(self,data):
+    def __convertMe(self,data):
         if isinstance(data,dict):
             dictionary={}
             for key,val in data.iteritems():
-                dictionary[self.convertMe(key)]=self.convertMe(val)
+                dictionary[self.__convertMe(key)]=self.__convertMe(val)
             return dictionary
         if isinstance(data,list):
             return [convertMe(elem) for elem in data]
@@ -397,60 +401,194 @@ class Itasa:
             return data.encode('utf-8')
         else:
             return data
+
         
-    def extractCookie(self):
-        return self.HEADERS['set-cookie'].strip().split(';')[0]
+    def search(self,dSerie):
+        """
+        Cerca uno show
+        ritorna id Show
+        """
+        if len(dSerie)<1:
+            return False
+        dSearch={}
+        dNews=self.__convertMe(json.loads(self.getNews(bSearch=True,nId=0,sQ=dSerie['NOME'],nPage=0).getvalue()))
+        bKey=False
+        if dNews.has_key(self.ITASA['KEYS']['NEWS']):
+            dNews=dNews[self.ITASA['KEYS']['NEWS']]
+            if dNews.has_key('search'):
+                dNews=dNews['search']
+                if dNews.has_key('news'):
+                    dNews=dNews['news']
+                    bKey=True
+        if bKey:
+            dSearch=dNews
+        dNews=None
+
+        dSerie['ID']=self.__getValueFromNewsSearch('show_id',dSearch)
+        dSerie['CERCATO']=dSerie['NOME']
+        dSerie['NOME']=self.__getValueFromNewsSearch('show_name',dSearch)
+        dSerie['FOUND']=True
+        
+        return dSerie
+
+    def getSubFromName(self,dSerie):
+        """
+        """
+        
+        sNome=dSerie['NOME']+' '+dSerie['STAGIONE']+'x'+dSerie['EPISODIO']
+        dSerie['VQUALITA']=dSerie['QUALITA']
+        dSub=self.__getSubFromBuffer(self.__convertMe(json.loads(self.getSubtitles('get',{"ID":dSerie['ID'],"PAGE":0}).getvalue())))
+
+        if dSub:
+            nPage=0
+            bFound=False
+            nPages=int(dSub['pages'])
+            bEnd=False
+            while not bFound and not bEnd:
+                for key in dSub['subtitles']:
+                    if dSub['subtitles'][key]['name']==sNome:
+                        dSerie['QUALITA']=dSub['subtitles'][key]['version']
+                        dSerie['SUBID']=dSub['subtitles'][key]['id']
+                        dSerie['SUBFOUND']=True
+                        bFound=True
+                if not bFound:
+                    nPage=int(dSub['page'])+1
+                    if nPage <= nPages:
+                        dSub=self.__getSubFromBuffer(self.__convertMe(json.loads(self.getSubtitles('get',{"ID":dSerie['ID'],"PAGE":nPage}).getvalue())))
+                    else:
+                        bEnd=True
+                
+        return dSerie
+                
+    def __getSubFromBuffer(self,dSub):
+
+        bSubs=False
+        if dSub.has_key(self.ITASA['KEYS']['SUBS']):
+            dSub=dSub[self.ITASA['KEYS']['SUBS']]
+            if dSub.has_key('direct'):
+                dSub=dSub['direct']
+            else:
+                return False
+        return dSub
+    def __getValueFromNewsSearch(self,sValue,dSearch):
+        """
+        Prende il primo show_id dalla ricerca
+        """
+        rVal=''
+        if isinstance(dSearch,dict):
+            if dSearch.has_key('key_0'):
+                rVal=dSearch['key_0'][sValue]
+        return rVal
+    
+    #def __getShowInfo(self,dSearch):
+    #   print json.loads(self.getShow('info',dSearch))
+        
+    #def extractCookie(self):
+    #return self.HEADERS['set-cookie'].strip().split(';')[0]
 
     ## parsing degli elementi minimi per effettuare un login
-    def html_parser(self,html_data):
+    def __htmlParser(self,html_data):
 
         html_proc = beatsop(html_data)
     	#form
         txtinput = html_proc.findAll('form', {'name':'login'})
 
-    	## cerca tra gli elementi di tipo hidden/submit nel form login
+    	## cerca tra gli elementi di tipo hidden/submit nel form loginè
         listform = ["submit","hidden"]
         rVal={}
         for elem in txtinput[0].findAll('input',{'type':listform}):
-            rVal[self.convertMe(elem['name'])]=self.convertMe(elem['value'])        
+            rVal[self.__convertMe(elem['name'])]=self.__convertMe(elem['value'])        
         return rVal
+    
+    def getFile(self,dSerie,data):
+
+        sPath=''
+        sZipPath='./'+dSerie['ORIGINAL']
+        sSubPath='./'+dSerie['ORIGINAL']+'.srt'
+        try:
+            fp=open(sZipPath,'wb')
+            fp.write(data)
+            fp.close()
+        except Exception, ex:
+            print 'Cannot Create File'
+
+        try:
+            if os.path.isfile(sZipPath):
+                
+                zf=zipfile.ZipFile(sZipPath,'r')
+                binData=zf.read(zf.namelist()[0])
+                os.remove(sZipPath)
+                
+                fp=open(sSubPath,'wb')
+                
+                if binData:                        
+                    fp.write(binData)
+                else:
+                    fp.write('FILE SUBS NOT FOUND')
+                fp.close()
+                
+                binData=None                
+                
+                sPath=os.path.realpath(sSubPath)
+                    
+        except Exception, ex:
+            print 'Cannot find subs'
+            
+        return sPath
 
 def GetName(sFileName=''):
     import re
     
-    rVal=''
+    rVal=False
     sName=sFileName
-    lName=sName.strip().split('.')
-
-    dApp={}
-    p=re.match(r"(?P<NOME>([a-zA-Z\.])+)(?P<STAGIONE>[S][0-9]{1,2})(?P<EPISODIO>[E][0-9]{1,2})\.(?P<QUALITA>720|1080)[p]",sName)
+    
+    p=re.match(r"(?P<NOME>([a-zA-Z\.])+)(?P<STAGIONE>[Ss][0-9]{1,2})(?P<EPISODIO>[Ee][0-9]{1,2})\.(?P<QUALITA>720|1080)[p]",sName)
     if p:
+        dApp={}
         dApp['NOME']=re.sub(r"\.",' ',p.group('NOME'))[:-1]
         dApp['STAGIONE']=p.group('STAGIONE')[2:3]
         dApp['EPISODIO']=p.group('EPISODIO')[1:3]
-        dApp['QUALITA']=p.group('QUALITA')        
+        dApp['QUALITA']=p.group('QUALITA')
+        dApp['SUBFOUND']=False
+        dApp['FOUND']=False
+        dApp['ORIGINAL']='.'.join(x for x in sFileName.split('.')[:-1])
         rVal=dApp 
     return rVal
 
 if __name__=='__main__':
-
-    """
-    import sys
-    name=''
     
+    ## USERNAME italiansubs.net
+    USERNAME='MyUser'
+    ## PASSWORD italiansubs.net
+    PASSWORD='MyPass'
+
+
+
     if len(sys.argv)>1:
         try:
-            dName=GetName(sys.argv[1])
+            sName=u""+sys.argv[1]
+            dName=GetName(sName)
+            if not dName:
+                exit('Error Name')
         except Exception:
-            exit('Errore nessun nome torvato')
+            exit('Errore nome')
     else:
         exit('Errore nessun nome trovato')
-    """
+
     oItasa=Itasa()
-    data=oItasa.login('Username','Password')
-    oItasa.loginSite()
-    data=oItasa.getSubtitles('download',{'ID':54195})
-    fp=open('./file.zip','wb')
-    fp.write(data.getvalue())
-    fp.close()
+    ## ritorna id show
+    dSearch=oItasa.search(dName)
+    dSub=oItasa.getSubFromName(dSearch)
+
+    data=''
+    if dSub['SUBFOUND']==True:
+        oItasa.login(USERNAME,PASSWORD)
+        oItasa.loginSite()
+        data=oItasa.getSubtitles('download',{'ID':dSub['SUBID']}).getvalue()
+        sPath=''
+        if data:
+            sPath=oItasa.getFile(dSearch,data)
+        print sPath
+    else:
+        print False
     oItasa=None
